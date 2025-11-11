@@ -1,3 +1,5 @@
 <Solution>
-  <Project Path="Uno.RevenueCat.InAppBilling/Uno.RevenueCat.csproj" />
+  <Project Path="../../Uno.RevenueCat.InAppBilling/src/Uno.RevenueCat.InAppBilling/Uno.RevenueCat.InAppBilling.csproj">
+    <Deploy />
+  </Project>
 </Solution>
