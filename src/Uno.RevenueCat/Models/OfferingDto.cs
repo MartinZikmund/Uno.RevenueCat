@@ -1,0 +1,9 @@
+﻿namespace Uno.RevenueCat.Models;
+
+public sealed record OfferingDto
+{
+    public string Identifier { get; init; } = string.Empty;
+    public List<PackageDto> AvailablePackages { get; init; } = new();
+    public bool IsCurrent { get; init; } = false;
+    public string? Metadata { get; init; }
+}
