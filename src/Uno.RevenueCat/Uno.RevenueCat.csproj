@@ -26,20 +26,20 @@
 
 	<!-- Shared dependencies -->
 	<ItemGroup>
-		<PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="9.0.0" />
-		<PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="9.0.0" />
-		<PackageReference Include="Microsoft.Extensions.Logging" Version="9.0.0" />
+		<PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" />
+		<PackageReference Include="Microsoft.Extensions.Logging.Abstractions" />
+		<PackageReference Include="Microsoft.Extensions.Logging" />
 	</ItemGroup>
 
 	<!-- Android dependencies -->
 	<ItemGroup Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'android'">
-		<PackageReference Include="Kebechet.Maui.RevenueCat.Android" Version="9.2.0.2" />
-		<PackageReference Include="Uno.WinRT" Version="6.0.12" />
+		<PackageReference Include="Kebechet.Maui.RevenueCat.Android" />
+		<PackageReference Include="Uno.WinRT" />
 	</ItemGroup>
 
 	<!-- iOS dependencies -->
 	<ItemGroup Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'ios'">
-		<PackageReference Include="Kebechet.Maui.RevenueCat.iOS" Version="5.34.0.1" />
+		<PackageReference Include="Kebechet.Maui.RevenueCat.iOS" />
 	</ItemGroup>
 
 	<!-- Platform code filtering -->

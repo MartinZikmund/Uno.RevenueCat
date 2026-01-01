@@ -1,0 +1,11 @@
+<Project ToolsVersion="15.0">
+  <ItemGroup>
+    <PackageVersion Include="Nerdbank.GitVersioning" Version="3.6.133" />
+    <PackageVersion Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="9.0.0" />
+    <PackageVersion Include="Microsoft.Extensions.Logging.Abstractions" Version="9.0.0" />
+    <PackageVersion Include="Microsoft.Extensions.Logging" Version="9.0.0" />
+    <PackageVersion Include="Kebechet.Maui.RevenueCat.Android" Version="9.2.0.2" />
+    <PackageVersion Include="Uno.WinRT" Version="6.0.12" />
+    <PackageVersion Include="Kebechet.Maui.RevenueCat.iOS" Version="5.34.0.1" />
+  </ItemGroup>
+</Project>
