@@ -1,5 +1,4 @@
-﻿using Microsoft.Extensions.DependencyInjection;
-using Uno.RevenueCat.Services;
+using Microsoft.Extensions.DependencyInjection;
 using Uno.RevenueCat.Services;
 
 namespace Uno.RevenueCat;
