@@ -1,0 +1,67 @@
+name: 'Build and deploy .NET packages'
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+
+jobs:
+  build:
+    name: '.NET Build'
+    runs-on: windows-latest
+
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+    - name: Setup .NET
+      uses: actions/setup-dotnet@v4
+      with:
+        dotnet-version: 10.0.x  
+    - name: Install GitVersion
+      uses: gittools/actions/gitversion/setup@v1.1.1
+      with:
+        versionSpec: '5.x'
+    - name: Determine Version
+      uses: gittools/actions/gitversion/execute@v1.1.1
+      id: gitversion
+      with:
+        useConfigFile: true
+    - name: Restore workloads
+      run: dotnet workload restore src/Uno.RevenueCat.slnx
+    - name: Restore dependencies
+      run: dotnet restore src/Uno.RevenueCat.slnx
+    - name: Build
+      run: dotnet build --no-restore src/Uno.RevenueCat.slnx /p:PackageVersion=${{ steps.gitversion.outputs.FullSemVer }}
+    # - name: Test
+    #   run: dotnet test --no-build --verbosity normal
+    # - name: Pack
+    #   run: dotnet pack src/Uno.RevenueCat.slnx
+    - name: Publish artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: nuget-packages
+        path: |
+          src/**/*.nupkg
+          src/**/*.snupkg
+
+  publish:
+    name: 'Publish to NuGet'
+    runs-on: windows-latest
+    if: github.ref == 'refs/heads/main'
+    needs: build
+    
+    steps:
+    - name: Download artifacts
+      uses: actions/download-artifact@v4
+      with:
+        name: nuget-packages
+        path: ./packages
+    - name: Setup .NET
+      uses: actions/setup-dotnet@v4
+      with:
+        dotnet-version: 10.0.x
+    - name: Publish to NuGet
+      run: |
+        dotnet nuget push '**/*.nupkg' -k ${{ secrets.NUGETAPIKEY }} -s https://api.nuget.org/v3/index.json
