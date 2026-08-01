@@ -1,9 +1,14 @@
-﻿using Uno.RevenueCat.Models;
-using System.Diagnostics;
+using System.Collections.Concurrent;
 using System.Globalization;
+using Uno.RevenueCat.Enums;
+using Uno.RevenueCat.Models;
 
 namespace Uno.RevenueCat.Extensions;
 
+/// <summary>
+/// Display helpers for <see cref="PackageDto"/>: normalizes a package's price to any period and
+/// formats it as a localized currency string.
+/// </summary>
 public static partial class PackageDtoExtensions
 {
     private static readonly decimal _daysInWeek = 7m;
@@ -13,82 +18,61 @@ public static partial class PackageDtoExtensions
     private static readonly decimal _monthsInHalfYear = 6m;
     private static readonly decimal _monthsInYear = 12m;
 
-    public static decimal GetMonthlyPrice(this PackageDto packageDto, bool ignoreExceptions = true, int? decimalRoundUpTo = 2)
-    {
-        decimal result;
+    // GetLocalizedPrice runs once per package and the culture scan is O(all specific cultures),
+    // so the resolved culture is cached per ISO currency code.
+    private static readonly ConcurrentDictionary<string, CultureInfo?> _currencyCultureCache =
+        new(StringComparer.Ordinal);
 
-        switch (packageDto.Identifier)
+    /// <summary>
+    /// Returns the package's price normalized to <paramref name="duration"/>.
+    /// </summary>
+    /// <param name="packageDto">The package.</param>
+    /// <param name="duration">Period to normalize the price to.</param>
+    /// <param name="ignoreExceptions">Return <c>0</c> instead of throwing for unsupported package identifiers.</param>
+    /// <param name="decimalRoundUpTo">Decimal places to round up to, or <c>null</c> to skip rounding.</param>
+    public static decimal GetPriceFor(
+        this PackageDto packageDto,
+        PriceDuration duration,
+        bool ignoreExceptions = true,
+        int? decimalRoundUpTo = 2)
+    {
+        var monthlyPrice = NormalizeToMonthly(packageDto, ignoreExceptions);
+
+        var result = duration switch
         {
-            case DefaultPackageIdentifier.Weekly:
-                result = packageDto.Product.Pricing.Price / _daysInWeek * _daysInMonth;
-                break;
-            case DefaultPackageIdentifier.Monthly:
-                result = packageDto.Product.Pricing.Price;
-                break;
-            case DefaultPackageIdentifier.BiMonthly:
-                result = packageDto.Product.Pricing.Price / _monthsInBiMonthly;
-                break;
-            case DefaultPackageIdentifier.Quarterly:
-                result = packageDto.Product.Pricing.Price / _monthsInQuartal;
-                break;
-            case DefaultPackageIdentifier.SemiAnnually:
-                result = packageDto.Product.Pricing.Price / _monthsInHalfYear;
-                break;
-            case DefaultPackageIdentifier.Annually:
-                result = packageDto.Product.Pricing.Price / _monthsInYear;
-                break;
-            default:
-                if (ignoreExceptions)
-                {
-                    result = 0m;
-                    break;
-                }
-                throw new NotImplementedException("Specified offering identifier is not supported.");
+            PriceDuration.Daily => monthlyPrice / _daysInMonth,
+            PriceDuration.Weekly => monthlyPrice / _daysInMonth * _daysInWeek,
+            PriceDuration.Monthly => monthlyPrice,
+            PriceDuration.Yearly => monthlyPrice * _monthsInYear,
+            _ => throw new ArgumentOutOfRangeException(nameof(duration), duration, "Unknown price duration."),
+        };
+
+        if (decimalRoundUpTo is null)
+        {
+            return result;
         }
 
-        return decimalRoundUpTo is null
-            ? result
-            : result.RoundUp(decimalRoundUpTo.Value);
-    }
-    public static decimal GetWeeklyPrice(this PackageDto packageDto, bool ignoreExceptions = true, int? decimalRoundUpTo = 2)
-    {
-        var monthlyPrice = GetMonthlyPrice(packageDto, ignoreExceptions, null);
-        var weeklyPrice = monthlyPrice / _daysInMonth * _daysInWeek;
-
-        return decimalRoundUpTo is null
-            ? weeklyPrice
-            : weeklyPrice.RoundUp(decimalRoundUpTo.Value);
+        // Normalizing through months leaves a ~1e-28 decimal-division residue, and RoundUp is a
+        // ceiling: without collapsing the residue first, a $1.99 weekly package would round up to
+        // $2.00. Rounding to 10 places kills the noise while leaving genuine fractions intact.
+        return decimal.Round(result, 10).RoundUp(decimalRoundUpTo.Value);
     }
 
-    public static string GetMonthlyPriceWithCurrency(this PackageDto packageDto, bool ignoreExceptions = true, int? decimalRoundUpTo = 2)
+    /// <summary>
+    /// As <see cref="GetPriceFor"/>, but formatted as a localized currency string.
+    /// Returns <c>"$0.00"</c> on failure when <paramref name="ignoreExceptions"/> is <c>true</c>.
+    /// </summary>
+    public static string GetPriceWithCurrencyFor(
+        this PackageDto packageDto,
+        PriceDuration duration,
+        bool ignoreExceptions = true,
+        int? decimalRoundUpTo = 2)
     {
         try
         {
-            var monthlyPrice = packageDto.GetMonthlyPrice(ignoreExceptions, decimalRoundUpTo);
+            var price = packageDto.GetPriceFor(duration, ignoreExceptions, decimalRoundUpTo);
 
-            var localisedCurrency = GetLocalizedPrice(packageDto.Product.Pricing.CurrencyCode, monthlyPrice);
-
-            return localisedCurrency;
-        }
-        catch (Exception)
-        {
-            if (ignoreExceptions)
-            {
-                return "$0.00";
-            }
-
-            throw;
-        }
-    }
-    public static string GetWeeklyPriceWithCurrency(this PackageDto packageDto, bool ignoreExceptions = true, int? decimalRoundUpTo = 2)
-    {
-        try
-        {
-            var weeklyPrice = packageDto.GetWeeklyPrice(ignoreExceptions, decimalRoundUpTo);
-
-            var localisedCurrency = GetLocalizedPrice(packageDto.Product.Pricing.CurrencyCode, weeklyPrice);
-
-            return localisedCurrency;
+            return GetLocalizedPrice(packageDto.Product.Pricing.CurrencyCode, price);
         }
         catch (Exception)
         {
@@ -101,26 +85,69 @@ public static partial class PackageDtoExtensions
         }
     }
 
+    /// <summary>
+    /// Formats <paramref name="price"/> as a localized currency string. Number conventions
+    /// (separators, grouping) come from <see cref="CultureInfo.CurrentCulture"/>; the currency symbol
+    /// and decimal-digit count come from the currency itself. Whole prices drop the fractional part
+    /// (<c>199 Kč</c>, not <c>199,00 Kč</c>). Falls back to the ISO code as the symbol when the
+    /// currency is unknown — which is also the case under <c>InvariantGlobalization</c>.
+    /// </summary>
     public static string GetLocalizedPrice(string priceIsoCurrencyCode, decimal price)
     {
-        var currencyCulture = GetCulture(priceIsoCurrencyCode);
+        var format = (NumberFormatInfo)CultureInfo.CurrentCulture.NumberFormat.Clone();
+        var currencyCulture = _currencyCultureCache.GetOrAdd(priceIsoCurrencyCode, FindCurrencyCulture);
 
-        return price.ToString("C", currencyCulture);
-    }
-
-    private static CultureInfo GetCulture(string isoCurrencySymbol)
-    {
-        foreach (CultureInfo ci in CultureInfo.GetCultures(CultureTypes.SpecificCultures))
+        if (currencyCulture is not null)
         {
-            var regionalInfo = new RegionInfo(ci.Name);
-            if (regionalInfo.ISOCurrencySymbol == isoCurrencySymbol)
-            {
-                return ci;
-            }
+            var currencyFormat = currencyCulture.NumberFormat;
+
+            format.CurrencyDecimalDigits = currencyFormat.CurrencyDecimalDigits;
+            format.CurrencySymbol = currencyFormat.CurrencySymbol;
+
+            // The symbol's placement must come from the currency too. Keeping CurrentCulture's
+            // pattern while swapping in a foreign symbol yields "Kč199" instead of "199 Kč".
+            format.CurrencyPositivePattern = currencyFormat.CurrencyPositivePattern;
+            format.CurrencyNegativePattern = currencyFormat.CurrencyNegativePattern;
+        }
+        else
+        {
+            format.CurrencySymbol = priceIsoCurrencyCode;
         }
 
-        Debug.WriteLine("Culture not found for " + isoCurrencySymbol);
-
-        return CultureInfo.CurrentCulture;
+        return price == Math.Floor(price)
+            ? price.ToString("C0", format)
+            : price.ToString("C", format);
     }
+
+    // Single source of truth for every per-period conversion.
+    private static decimal NormalizeToMonthly(PackageDto packageDto, bool ignoreExceptions) =>
+        packageDto.Identifier switch
+        {
+            DefaultPackageIdentifier.Weekly => packageDto.Product.Pricing.Price / _daysInWeek * _daysInMonth,
+            DefaultPackageIdentifier.Monthly => packageDto.Product.Pricing.Price,
+            DefaultPackageIdentifier.BiMonthly => packageDto.Product.Pricing.Price / _monthsInBiMonthly,
+            DefaultPackageIdentifier.Quarterly => packageDto.Product.Pricing.Price / _monthsInQuartal,
+            DefaultPackageIdentifier.SemiAnnually => packageDto.Product.Pricing.Price / _monthsInHalfYear,
+            DefaultPackageIdentifier.Annually => packageDto.Product.Pricing.Price / _monthsInYear,
+            _ => ignoreExceptions
+                ? 0m
+                : throw new NotImplementedException("Specified offering identifier is not supported."),
+        };
+
+    // Ordinal sort makes the result deterministic across devices and ICU versions; a culture whose
+    // name RegionInfo rejects is skipped rather than taking out the whole scan.
+    private static CultureInfo? FindCurrencyCulture(string isoCurrencyCode) =>
+        CultureInfo.GetCultures(CultureTypes.SpecificCultures)
+            .OrderBy(static culture => culture.Name, StringComparer.Ordinal)
+            .FirstOrDefault(culture =>
+            {
+                try
+                {
+                    return new RegionInfo(culture.Name).ISOCurrencySymbol == isoCurrencyCode;
+                }
+                catch
+                {
+                    return false;
+                }
+            });
 }

@@ -24,6 +24,20 @@ public interface IRevenueCatBilling
     string AppUserId { get; }
 
     /// <summary>
+    /// Determines whether the device is able to make payments (Play Billing / StoreKit available).
+    /// </summary>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    /// <returns><c>true</c> if payments can be made; otherwise <c>false</c>.</returns>
+    Task<bool> CanMakePaymentsAsync(CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Gets the ISO country code of the user's storefront (e.g. "US", "CZ").
+    /// </summary>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    /// <returns>The storefront country code, or <see cref="string.Empty"/> when unavailable.</returns>
+    Task<string> GetStorefrontCountryCodeAsync(CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// Initializes the RevenueCat SDK with the specified API key.
     /// </summary>
     /// <param name="apiKey">The RevenueCat API key.</param>

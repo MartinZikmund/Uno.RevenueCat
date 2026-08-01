@@ -25,11 +25,14 @@ internal static class PackageArrayExtensions
                     {
                         CurrencyCode = currencyCode,
                         Price = price,
-                        PriceMicros = (long)(package.StoreProduct.Price.DoubleValue * Math.Pow(10, 6)),
+                        // Round rather than truncate: a binary double often lands just below the
+                        // intended integer (2.01 * 1e6 == 2009999.9999999998), and Android reports
+                        // the canonical AmountMicros for the same product.
+                        PriceMicros = (long)decimal.Round(price * 1_000_000m, MidpointRounding.AwayFromZero),
                         PriceLocalized = PackageDtoExtensions.GetLocalizedPrice(currencyCode, price)
                     },
                     Sku = package.StoreProduct.ProductIdentifier,
-                    SubscriptionPeriod = package.StoreProduct.SubscriptionPeriod?.ToString() ?? string.Empty,
+                    SubscriptionPeriod = package.StoreProduct.SubscriptionPeriod.ToSubscriptionPeriodDto(),
                 }
             };
 

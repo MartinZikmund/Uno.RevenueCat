@@ -1,5 +1,4 @@
 using Foundation;
-using System.Text.Json;
 
 namespace Uno.RevenueCat.Platforms.iOS.Extensions;
 
@@ -25,6 +24,8 @@ internal static class NsDictionaryExtensions
         );
     }
 
+    // Must go through NSJsonSerialization: stringifying each value via ToString() turns numbers
+    // into "5", booleans into "1", and nested containers into Objective-C description text.
     internal static string? ToJson(this NSDictionary<NSString, NSObject>? dictionary)
     {
         if (dictionary is null || dictionary.Count == 0)
@@ -32,14 +33,10 @@ internal static class NsDictionaryExtensions
             return null;
         }
 
-        var dict = new Dictionary<string, object?>();
-        for (nuint i = 0; i < dictionary.Count; i++)
-        {
-            var key = dictionary.Keys[i];
-            var value = dictionary.Values[i];
-            dict[key.ToString()] = value?.ToString();
-        }
+        var jsonData = NSJsonSerialization.Serialize(dictionary, 0, out var error);
 
-        return JsonSerializer.Serialize(dict);
+        return error is null
+            ? NSString.FromData(jsonData, NSStringEncoding.UTF8)
+            : null;
     }
 }

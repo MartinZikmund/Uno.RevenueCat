@@ -1,0 +1,23 @@
+<Project Sdk="Microsoft.NET.Sdk">
+	<PropertyGroup>
+		<TargetFramework>net9.0</TargetFramework>
+		<IsPackable>false</IsPackable>
+		<IsTestProject>true</IsTestProject>
+	</PropertyGroup>
+
+	<!--
+		The library has no platform-agnostic TFM, so it cannot be referenced directly.
+		Enums, Models and Extensions contain no Android/iOS types, so link them in and
+		test them on net9.0.
+	-->
+	<ItemGroup>
+		<Compile Include="..\Uno.RevenueCat\Enums\**\*.cs" LinkBase="Linked\Enums" />
+		<Compile Include="..\Uno.RevenueCat\Models\**\*.cs" LinkBase="Linked\Models" />
+		<Compile Include="..\Uno.RevenueCat\Extensions\**\*.cs" LinkBase="Linked\Extensions" />
+	</ItemGroup>
+
+	<ItemGroup>
+		<PackageReference Include="Microsoft.NET.Test.Sdk" />
+		<PackageReference Include="MSTest" />
+	</ItemGroup>
+</Project>

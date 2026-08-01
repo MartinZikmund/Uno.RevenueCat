@@ -13,7 +13,10 @@ public partial class RevenueCatBilling : IRevenueCatBilling
 
     private static bool _isInstanceCreated = false;
     private volatile bool _isInitialized = false;
-    private string _cachedManagementUrl = string.Empty;
+
+    // Bumped on every identity change. An offerings fetch that started before the change must not
+    // write its (now stale, user-scoped) result into the cache after it.
+    private int _identityGeneration;
 
     /// <summary>
     /// Creates a new instance of the RevenueCatBilling service.
@@ -34,11 +37,31 @@ public partial class RevenueCatBilling : IRevenueCatBilling
     /// <inheritdoc />
     public bool IsInitialized => _isInitialized;
 
+    /// <summary>
+    /// Throws if <see cref="Initialize(string)"/> has not been called. Calling the SDK before
+    /// configuration is a developer error, not a runtime failure, so it surfaces as an exception
+    /// rather than an empty result.
+    /// </summary>
+    /// <exception cref="InvalidOperationException">The SDK has not been initialized.</exception>
+    private void EnsureInitialized()
+    {
+        if (!_isInitialized)
+        {
+            throw new InvalidOperationException("RevenueCatBilling wasn't initialized. Call Initialize first.");
+        }
+    }
+
     /// <inheritdoc />
     public partial bool IsAnonymous { get; }
 
     /// <inheritdoc />
     public partial string AppUserId { get; }
+
+    /// <inheritdoc />
+    public partial Task<bool> CanMakePaymentsAsync(CancellationToken cancellationToken);
+
+    /// <inheritdoc />
+    public partial Task<string> GetStorefrontCountryCodeAsync(CancellationToken cancellationToken);
 
     /// <inheritdoc />
     public partial void Initialize(string apiKey);
@@ -113,4 +136,10 @@ public partial class RevenueCatBilling : IRevenueCatBilling
     /// </summary>
     /// <param name="enable">Whether to enable debug logs.</param>
     internal static partial void EnableDebugLogs(bool enable);
+
+    /// <summary>
+    /// Drops caches whose contents belong to a specific user. Offerings are user-scoped (RevenueCat
+    /// targeting and placements), so they must not survive a login, logout, or restore.
+    /// </summary>
+    private partial void InvalidateIdentityScopedCaches();
 }

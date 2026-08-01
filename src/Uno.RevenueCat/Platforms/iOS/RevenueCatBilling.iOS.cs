@@ -11,8 +11,13 @@ namespace Uno.RevenueCat.Services;
 
 public partial class RevenueCatBilling : IRevenueCatBilling
 {
-    private Purchases _purchases = default!;
     private RCOfferings? _cachedOfferingPackages = null;
+
+    private partial void InvalidateIdentityScopedCaches()
+    {
+        Interlocked.Increment(ref _identityGeneration);
+        _cachedOfferingPackages = null;
+    }
 
     /// <inheritdoc />
     public partial bool IsAnonymous => Purchases.SharedPurchases.IsAnonymous;
@@ -21,11 +26,24 @@ public partial class RevenueCatBilling : IRevenueCatBilling
     public partial string AppUserId => Purchases.SharedPurchases.AppUserID;
 
     /// <inheritdoc />
+    public partial Task<bool> CanMakePaymentsAsync(CancellationToken cancellationToken) =>
+        Task.FromResult(Purchases.CanMakePayments);
+
+    /// <inheritdoc />
+    public partial Task<string> GetStorefrontCountryCodeAsync(CancellationToken cancellationToken)
+    {
+        EnsureInitialized();
+
+        // Populated once StoreKit has reported the user's storefront; null until then.
+        return Task.FromResult(Purchases.SharedPurchases?.StoreFrontCountryCode ?? string.Empty);
+    }
+
+    /// <inheritdoc />
     public partial void Initialize(string apiKey)
     {
         try
         {
-            _purchases = Purchases.ConfigureWithAPIKey(apiKey);
+            Purchases.ConfigureWithAPIKey(apiKey);
             _isInitialized = true;
         }
         catch (Exception ex)
@@ -40,7 +58,7 @@ public partial class RevenueCatBilling : IRevenueCatBilling
     {
         try
         {
-            _purchases = Purchases.ConfigureWithAPIKey(apiKey, appUserId);
+            Purchases.ConfigureWithAPIKey(apiKey, appUserId);
             _isInitialized = true;
         }
         catch (Exception ex)
@@ -55,9 +73,11 @@ public partial class RevenueCatBilling : IRevenueCatBilling
         IEnumerable<string> productIdentifiers,
         CancellationToken cancellationToken)
     {
+        EnsureInitialized();
+
         try
         {
-            using var eligibilities = await _purchases.CheckTrialOrIntroDiscountEligibilityAsync(productIdentifiers, cancellationToken);
+            using var eligibilities = await Purchases.SharedPurchases.CheckTrialOrIntroDiscountEligibilityAsync(productIdentifiers, cancellationToken);
             if (eligibilities is null || eligibilities.Count == 0)
             {
                 return new Dictionary<string, IntroElegibilityStatus>();
@@ -89,6 +109,8 @@ public partial class RevenueCatBilling : IRevenueCatBilling
         bool forceRefresh,
         CancellationToken cancellationToken)
     {
+        EnsureInitialized();
+
         if (!forceRefresh && _cachedOfferingPackages != null)
         {
             return _cachedOfferingPackages.ToOfferingDtoList();
@@ -96,13 +118,21 @@ public partial class RevenueCatBilling : IRevenueCatBilling
 
         try
         {
-            _cachedOfferingPackages = await _purchases.GetOfferingsAsync(cancellationToken);
-            if (_cachedOfferingPackages is null)
+            var generation = Volatile.Read(ref _identityGeneration);
+            var offerings = await Purchases.SharedPurchases.GetOfferingsAsync(cancellationToken);
+
+            if (offerings is null)
             {
                 return [];
             }
 
-            return _cachedOfferingPackages.ToOfferingDtoList();
+            // Drop the result if the user changed while the fetch was in flight.
+            if (Volatile.Read(ref _identityGeneration) == generation)
+            {
+                _cachedOfferingPackages = offerings;
+            }
+
+            return offerings.ToOfferingDtoList();
         }
         catch (OperationCanceledException ex)
         {
@@ -123,10 +153,7 @@ public partial class RevenueCatBilling : IRevenueCatBilling
         CancellationToken cancellationToken)
     {
         // appWindow is ignored on iOS - no Activity needed
-        if (!_isInitialized)
-        {
-            throw new InvalidOperationException("RevenueCatBilling wasn't initialized");
-        }
+        EnsureInitialized();
 
         if (_cachedOfferingPackages is null)
         {
@@ -149,11 +176,15 @@ public partial class RevenueCatBilling : IRevenueCatBilling
 
         try
         {
-            purchaseSuccessInfo = await _purchases.PurchasePackageAsync(packageToBuy, cancellationToken);
+            purchaseSuccessInfo = await Purchases.SharedPurchases.PurchasePackageAsync(packageToBuy, cancellationToken);
         }
         catch (PurchasesErrorException ex)
         {
-            var purchaseError = (PurchaseErrorStatus)(int)(ex?.PurchasesError?.Code ?? 0);
+            // UserCancelled is checked first: the SDK can signal cancellation with a null NSError,
+            // in which case there is no error code to map and it would surface as UnknownError.
+            var purchaseError = ex?.UserCancelled == true
+                ? PurchaseErrorStatus.PurchaseCancelledError
+                : (ex?.PurchasesErrorCode ?? RCPurchasesErrorCode.UnknownError).ToPurchaseErrorStatus();
 
             if (purchaseError != PurchaseErrorStatus.PurchaseCancelledError)
             {
@@ -208,9 +239,11 @@ public partial class RevenueCatBilling : IRevenueCatBilling
     /// <inheritdoc />
     public async partial Task<IReadOnlyList<string>> GetActiveSubscriptionsAsync(CancellationToken cancellationToken)
     {
+        EnsureInitialized();
+
         try
         {
-            using var customerInfo = await _purchases.GetCustomerInfoAsync(cancellationToken);
+            using var customerInfo = await Purchases.SharedPurchases.GetCustomerInfoAsync(cancellationToken);
             if (customerInfo is null)
             {
                 return [];
@@ -239,9 +272,11 @@ public partial class RevenueCatBilling : IRevenueCatBilling
     /// <inheritdoc />
     public async partial Task<IReadOnlyList<string>> GetAllPurchasedIdentifiersAsync(CancellationToken cancellationToken)
     {
+        EnsureInitialized();
+
         try
         {
-            using var customerInfo = await _purchases.GetCustomerInfoAsync(cancellationToken);
+            using var customerInfo = await Purchases.SharedPurchases.GetCustomerInfoAsync(cancellationToken);
             if (customerInfo is null)
             {
                 return [];
@@ -272,9 +307,11 @@ public partial class RevenueCatBilling : IRevenueCatBilling
         string productIdentifier,
         CancellationToken cancellationToken)
     {
+        EnsureInitialized();
+
         try
         {
-            using var customerInfo = await _purchases.GetCustomerInfoAsync(cancellationToken);
+            using var customerInfo = await Purchases.SharedPurchases.GetCustomerInfoAsync(cancellationToken);
             if (customerInfo is null)
             {
                 return null;
@@ -297,21 +334,17 @@ public partial class RevenueCatBilling : IRevenueCatBilling
     /// <inheritdoc />
     public async partial Task<string?> GetManagementSubscriptionUrlAsync(CancellationToken cancellationToken)
     {
-        if (!string.IsNullOrEmpty(_cachedManagementUrl))
-        {
-            return _cachedManagementUrl;
-        }
+        EnsureInitialized();
 
         try
         {
-            using var customerInfo = await _purchases.GetCustomerInfoAsync(cancellationToken);
+            using var customerInfo = await Purchases.SharedPurchases.GetCustomerInfoAsync(cancellationToken);
             if (customerInfo is null || customerInfo.ManagementURL is null)
             {
                 return null;
             }
 
-            _cachedManagementUrl = customerInfo.ManagementURL.ToString()!;
-            return _cachedManagementUrl;
+            return customerInfo.ManagementURL.ToString();
         }
         catch (OperationCanceledException ex)
         {
@@ -328,10 +361,14 @@ public partial class RevenueCatBilling : IRevenueCatBilling
     /// <inheritdoc />
     public async partial Task<CustomerInfoDto?> LoginAsync(string appUserId, CancellationToken cancellationToken)
     {
+        EnsureInitialized();
+
         try
         {
             var loginResult = await Purchases.SharedPurchases.LoginAsync(appUserId, cancellationToken);
             var customerInfo = loginResult.CustomerInfo;
+
+            InvalidateIdentityScopedCaches();
 
             return customerInfo.ToCustomerInfoDto();
         }
@@ -350,9 +387,13 @@ public partial class RevenueCatBilling : IRevenueCatBilling
     /// <inheritdoc />
     public async partial Task<CustomerInfoDto?> LogoutAsync(CancellationToken cancellationToken)
     {
+        EnsureInitialized();
+
         try
         {
             var customerInfo = await Purchases.SharedPurchases.LogOutAsync(cancellationToken);
+
+            InvalidateIdentityScopedCaches();
 
             return customerInfo.ToCustomerInfoDto();
         }
@@ -371,6 +412,8 @@ public partial class RevenueCatBilling : IRevenueCatBilling
     /// <inheritdoc />
     public async partial Task<CustomerInfoDto?> RestoreTransactionsAsync(CancellationToken cancellationToken)
     {
+        EnsureInitialized();
+
         try
         {
             var customerInfo = await Purchases.SharedPurchases.RestorePurchasesAsync(cancellationToken);
@@ -392,6 +435,8 @@ public partial class RevenueCatBilling : IRevenueCatBilling
     /// <inheritdoc />
     public async partial Task<CustomerInfoDto?> GetCustomerInfoAsync(CancellationToken cancellationToken)
     {
+        EnsureInitialized();
+
         try
         {
             var customerInfo = await Purchases.SharedPurchases.GetCustomerInfoAsync(cancellationToken);
@@ -413,24 +458,32 @@ public partial class RevenueCatBilling : IRevenueCatBilling
     /// <inheritdoc />
     public partial void SetEmail(string email)
     {
+        EnsureInitialized();
+
         Purchases.SharedPurchases.Attribution.SetEmail(email);
     }
 
     /// <inheritdoc />
     public partial void SetDisplayName(string name)
     {
+        EnsureInitialized();
+
         Purchases.SharedPurchases.Attribution.SetDisplayName(name);
     }
 
     /// <inheritdoc />
     public partial void SetPhoneNumber(string phone)
     {
+        EnsureInitialized();
+
         Purchases.SharedPurchases.Attribution.SetPhoneNumber(phone);
     }
 
     /// <inheritdoc />
     public partial void SetAttributes(IReadOnlyDictionary<string, string> attributes)
     {
+        EnsureInitialized();
+
         var nsAttributes = attributes.ToNSDictionary();
         Purchases.SharedPurchases.Attribution.SetAttributes(nsAttributes);
     }

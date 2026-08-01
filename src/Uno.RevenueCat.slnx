@@ -8,4 +8,7 @@
     <File Path="version.json" />
   </Folder>
   <Project Path="Uno.RevenueCat/Uno.RevenueCat.csproj" />
+  <Folder Name="/Tests/">
+    <Project Path="Uno.RevenueCat.Tests/Uno.RevenueCat.Tests.csproj" />
+  </Folder>
 </Solution>

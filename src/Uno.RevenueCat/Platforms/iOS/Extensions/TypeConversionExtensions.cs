@@ -18,41 +18,41 @@ internal static class TypeConversionExtensions
         }
     }
 
-    internal static PeriodType ToPeriodType(this RCPeriodType periodType)
+    // Never throws: this runs inside customer-info mapping, and an unmapped value there
+    // would lock a paying user out of their entitlements (or escape a completed purchase).
+    internal static PeriodType ToPeriodType(this RCPeriodType periodType) => periodType switch
     {
-        switch (periodType)
-        {
-            case RCPeriodType.Intro:
-                return PeriodType.Intro;
-            case RCPeriodType.Trial:
-                return PeriodType.Trial;
-            case RCPeriodType.Normal:
-                return PeriodType.Normal;
-            default:
-                throw new ArgumentException($"Unknown period type: {periodType}");
-        }
-    }
+        RCPeriodType.Intro => PeriodType.Intro,
+        RCPeriodType.Trial => PeriodType.Trial,
+        RCPeriodType.Normal => PeriodType.Normal,
+        RCPeriodType.Prepaid => PeriodType.Prepaid,
+        _ => PeriodType.Normal,
+    };
 
-    internal static StoreType ToStoreType(this RCStore store)
+    internal static StoreType ToStoreType(this RCStore store) => store switch
     {
-        switch (store)
-        {
-            case RCStore.AppStore:
-                return StoreType.AppStore;
-            case RCStore.MacAppStore:
-                return StoreType.MacAppStore;
-            case RCStore.PlayStore:
-                return StoreType.PlayStore;
-            case RCStore.Amazon:
-                return StoreType.Amazon;
-            case RCStore.Promotional:
-                return StoreType.Promotional;
-            case RCStore.Stripe:
-                return StoreType.Stripe;
-            default:
-                return StoreType.UnknownStore;
-        }
-    }
+        RCStore.AppStore => StoreType.AppStore,
+        RCStore.MacAppStore => StoreType.MacAppStore,
+        RCStore.PlayStore => StoreType.PlayStore,
+        RCStore.Amazon => StoreType.Amazon,
+        RCStore.Promotional => StoreType.Promotional,
+        RCStore.Stripe => StoreType.Stripe,
+        RCStore.Billing => StoreType.RcBilling,
+        RCStore.External => StoreType.External,
+        RCStore.Paddle => StoreType.Paddle,
+        RCStore.TestStore => StoreType.TestStore,
+        RCStore.Galaxy => StoreType.Galaxy,
+        _ => StoreType.UnknownStore,
+    };
+
+    internal static SubscriptionUnit ToSubscriptionUnit(this RCSubscriptionPeriodUnit unit) => unit switch
+    {
+        RCSubscriptionPeriodUnit.Day => SubscriptionUnit.Day,
+        RCSubscriptionPeriodUnit.Week => SubscriptionUnit.Week,
+        RCSubscriptionPeriodUnit.Month => SubscriptionUnit.Month,
+        RCSubscriptionPeriodUnit.Year => SubscriptionUnit.Year,
+        _ => SubscriptionUnit.Unknown,
+    };
 
     internal static RCLogLevel ToRCLogLevel(this Enums.LogLevel logLevel)
     {

@@ -14,12 +14,15 @@ internal static class TypeConversionExtensions
         return Enums.OwnershipType.Unknown;
     }
 
+    // Never throws: this runs inside customer-info mapping, and an unmapped value there
+    // would lock a paying user out of their entitlements (or escape a completed purchase).
     internal static Enums.PeriodType ToDtoPeriodType(this PeriodTypeNative periodType)
     {
         if (periodType == PeriodTypeNative.Intro) return Enums.PeriodType.Intro;
         if (periodType == PeriodTypeNative.Trial) return Enums.PeriodType.Trial;
         if (periodType == PeriodTypeNative.Normal) return Enums.PeriodType.Normal;
-        throw new ArgumentException($"Unknown period type: {periodType}");
+        if (periodType == PeriodTypeNative.Prepaid) return Enums.PeriodType.Prepaid;
+        return Enums.PeriodType.Normal;
     }
 
     internal static StoreType ToStoreType(this Store store)
@@ -30,6 +33,11 @@ internal static class TypeConversionExtensions
         if (store == Store.Amazon) return StoreType.Amazon;
         if (store == Store.Stripe) return StoreType.Stripe;
         if (store == Store.MacAppStore) return StoreType.MacAppStore;
+        if (store == Store.RcBilling) return StoreType.RcBilling;
+        if (store == Store.External) return StoreType.External;
+        if (store == Store.Paddle) return StoreType.Paddle;
+        if (store == Store.TestStore) return StoreType.TestStore;
+        if (store == Store.Galaxy) return StoreType.Galaxy;
         return StoreType.UnknownStore;
     }
 

@@ -1,4 +1,5 @@
 using Com.Revenuecat.Purchases;
+using Uno.RevenueCat.Extensions;
 using Uno.RevenueCat.Models;
 
 namespace Uno.RevenueCat.Platforms.Android.Extensions;
@@ -16,7 +17,7 @@ internal static class OfferingsExtensions
                 Identifier = offer.Identifier,
                 AvailablePackages = offer.AvailablePackages.ToPackageDtoList(),
                 IsCurrent = offer.Identifier == offerings?.Current?.Identifier,
-                Metadata = offer.Metadata.ToJson()
+                Metadata = offer.Metadata.ToJson().ToMetadataDictionary()
             };
 
             offeringDtos.Add(offerDto);
