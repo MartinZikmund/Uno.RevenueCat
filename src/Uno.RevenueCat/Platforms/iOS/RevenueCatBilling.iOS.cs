@@ -1,6 +1,7 @@
 using Maui.RevenueCat.iOS;
 using Microsoft.Extensions.Logging;
 using Uno.RevenueCat.Enums;
+using Uno.RevenueCat.Extensions;
 using Uno.RevenueCat.Models;
 using Uno.RevenueCat.Platforms.iOS.Exceptions;
 using Uno.RevenueCat.Platforms.iOS.Extensions;
@@ -35,7 +36,9 @@ public partial class RevenueCatBilling : IRevenueCatBilling
         EnsureInitialized();
 
         // Populated once StoreKit has reported the user's storefront; null until then.
-        return Task.FromResult(Purchases.SharedPurchases?.StoreFrontCountryCode ?? string.Empty);
+        // StoreKit reports alpha-3 ("USA") while the contract and Android use alpha-2.
+        var countryCode = Purchases.SharedPurchases?.StoreFrontCountryCode ?? string.Empty;
+        return Task.FromResult(countryCode.ToIsoAlpha2CountryCode());
     }
 
     /// <inheritdoc />
