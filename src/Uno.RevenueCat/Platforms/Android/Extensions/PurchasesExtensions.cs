@@ -1,8 +1,10 @@
 using Android.App;
 using Android.Content;
 using Com.Revenuecat.Purchases;
+using Uno.RevenueCat.Enums;
 using Uno.RevenueCat.Platforms.Android.Delegates;
 using Uno.RevenueCat.Platforms.Android.Models;
+using Package = Com.Revenuecat.Purchases.Package;
 
 namespace Uno.RevenueCat.Platforms.Android.Extensions;
 
@@ -29,10 +31,11 @@ internal static class PurchasesExtensions
     }
 
     internal static Task<CustomerInfo> GetCustomerInfoAsync(this Purchases purchases,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        CustomerInfoFetchPolicy fetchPolicy = CustomerInfoFetchPolicy.CachedOrFetched)
     {
         var listener = new DelegatingReceiveCustomerInfoCallback(cancellationToken);
-        purchases.GetCustomerInfo(listener);
+        purchases.GetCustomerInfo(fetchPolicy.ToRCCacheFetchPolicy(), listener);
         return listener.Task;
     }
 
@@ -65,7 +68,28 @@ internal static class PurchasesExtensions
     {
         var listener = new DelegatingMakePurchaseListener(cancellationToken);
         var purchaseParams = new PurchaseParams(new PurchaseParams.Builder(activity, packageToPurchase));
-        purchases.Purchase(purchaseParams, listener);
+
+        // Play Billing requires launchBillingFlow on the main thread, and the Test Store shows its
+        // dialog synchronously (Looper.prepare() crash off it). A throw inside the posted lambda
+        // would crash the looper and leave the task pending, so route it into the task instead.
+        activity.RunOnUiThread(() =>
+        {
+            // The callback may have been queued; a cancelled caller must not get a sheet afterwards.
+            if (cancellationToken.IsCancellationRequested)
+            {
+                return;
+            }
+
+            try
+            {
+                purchases.Purchase(purchaseParams, listener);
+            }
+            catch (Exception exception)
+            {
+                listener.ReportException(exception);
+            }
+        });
+
         return listener.Task;
     }
 

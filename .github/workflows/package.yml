@@ -2,10 +2,9 @@ name: 'Build and deploy .NET packages'
 
 on:
   push:
-    branches: [ "main" ]
-    tags: [ "v*" ]
+    branches: [ "main", "release/*" ]
   pull_request:
-    branches: [ "main" ]
+    branches: [ "main", "release/*" ]
 
 jobs:
   build:
@@ -25,12 +24,12 @@ jobs:
       run: dotnet workload restore src/Uno.RevenueCat.slnx
     - name: Restore dependencies
       run: dotnet restore src/Uno.RevenueCat.slnx
-    # PublicRelease=true strips Nerdbank.GitVersioning's -g<commit> suffix, so a v* tag builds a
-    # stable version (0.2.0) while every other ref stays a prerelease (0.2.0-gabc1234).
+    # Pushes are public releases (see publicReleaseRefSpec in version.json): main builds a
+    # prerelease (0.3.0-beta.5), release/x.y a stable version (0.3.1). PR builds keep a .g<commit> suffix.
     - name: Build
-      run: dotnet build --no-restore -c Release src/Uno.RevenueCat.slnx -p:PublicRelease=${{ startsWith(github.ref, 'refs/tags/v') }}
+      run: dotnet build --no-restore -c Release src/Uno.RevenueCat.slnx -p:PublicRelease=${{ github.event_name == 'push' }}
     - name: Test
-      run: dotnet test --no-build -c Release src/Uno.RevenueCat.Tests/Uno.RevenueCat.Tests.csproj -p:PublicRelease=${{ startsWith(github.ref, 'refs/tags/v') }}
+      run: dotnet test --no-build -c Release src/Uno.RevenueCat.Tests/Uno.RevenueCat.Tests.csproj -p:PublicRelease=${{ github.event_name == 'push' }}
     - name: Publish artifacts
       uses: actions/upload-artifact@v4
       with:
@@ -42,8 +41,9 @@ jobs:
   publish:
     name: 'Publish to NuGet'
     runs-on: windows-latest
-    # Publish only from a version tag, so a push to main cannot ship a release by accident.
-    if: startsWith(github.ref, 'refs/tags/v')
+    # Pushes to main publish prereleases, pushes to release/x.y publish stable versions.
+    # Cut a release branch with `nbgv prepare-release`. Pull requests never publish.
+    if: github.event_name == 'push'
     needs: build
 
     steps:

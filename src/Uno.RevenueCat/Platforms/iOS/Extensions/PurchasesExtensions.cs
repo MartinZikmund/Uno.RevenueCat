@@ -1,5 +1,6 @@
 using Foundation;
 using Maui.RevenueCat.iOS;
+using Uno.RevenueCat.Enums;
 using Uno.RevenueCat.Platforms.iOS.Exceptions;
 using Uno.RevenueCat.Platforms.iOS.Models;
 
@@ -149,10 +150,11 @@ internal static class PurchasesExtensions
     }
 
     internal static Task<RCCustomerInfo> GetCustomerInfoAsync(this RCPurchases purchases,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        CustomerInfoFetchPolicy fetchPolicy = CustomerInfoFetchPolicy.CachedOrFetched)
     {
         var bridge = new CompletionBridge<RCCustomerInfo>(cancellationToken);
-        purchases.GetCustomerInfoWithCompletion((RCCustomerInfo customerInfo, NSError error) =>
+        purchases.GetCustomerInfoWithFetchPolicy(fetchPolicy.ToRCCacheFetchPolicy(), (RCCustomerInfo customerInfo, NSError error) =>
         {
             if (error != null)
             {

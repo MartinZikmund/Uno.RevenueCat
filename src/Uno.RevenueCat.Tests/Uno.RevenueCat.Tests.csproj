@@ -1,6 +1,6 @@
 <Project Sdk="Microsoft.NET.Sdk">
 	<PropertyGroup>
-		<TargetFramework>net9.0</TargetFramework>
+		<TargetFramework>net10.0</TargetFramework>
 		<IsPackable>false</IsPackable>
 		<IsTestProject>true</IsTestProject>
 	</PropertyGroup>
@@ -8,7 +8,7 @@
 	<!--
 		The library has no platform-agnostic TFM, so it cannot be referenced directly.
 		Enums, Models and Extensions contain no Android/iOS types, so link them in and
-		test them on net9.0.
+		test them on net10.0.
 	-->
 	<ItemGroup>
 		<Compile Include="..\Uno.RevenueCat\Enums\**\*.cs" LinkBase="Linked\Enums" />
@@ -17,6 +17,7 @@
 	</ItemGroup>
 
 	<ItemGroup>
+		<PackageReference Include="Kebechet.Types.Result" />
 		<PackageReference Include="Microsoft.NET.Test.Sdk" />
 		<PackageReference Include="MSTest" />
 	</ItemGroup>

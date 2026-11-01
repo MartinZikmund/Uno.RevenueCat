@@ -1,6 +1,7 @@
 using Com.Revenuecat.Purchases;
 using Uno.RevenueCat.Extensions;
 using Uno.RevenueCat.Models;
+using Package = Com.Revenuecat.Purchases.Package;
 
 namespace Uno.RevenueCat.Platforms.Android.Extensions;
 

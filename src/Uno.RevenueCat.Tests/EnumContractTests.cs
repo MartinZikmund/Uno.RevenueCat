@@ -81,4 +81,12 @@ public sealed class EnumContractTests
 
         CollectionAssert.AreEqual(Array.Empty<string>(), undecorated);
     }
+
+    [TestMethod]
+    [DataRow(CustomerInfoFetchPolicy.CachedOrFetched, 0)]
+    [DataRow(CustomerInfoFetchPolicy.FetchCurrent, 1)]
+    [DataRow(CustomerInfoFetchPolicy.NotStaleCachedOrFetched, 2)]
+    [DataRow(CustomerInfoFetchPolicy.FromCacheOnly, 3)]
+    public void CustomerInfoFetchPolicy_ValuesAreStable(CustomerInfoFetchPolicy member, int expected) =>
+        Assert.AreEqual(expected, (int)member);
 }

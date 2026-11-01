@@ -1,12 +1,12 @@
 <Project ToolsVersion="15.0">
   <ItemGroup>
-    <PackageVersion Include="Nerdbank.GitVersioning" Version="3.6.133" />
-    <PackageVersion Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="9.0.0" />
-    <PackageVersion Include="Microsoft.Extensions.Logging.Abstractions" Version="9.0.0" />
-    <PackageVersion Include="Microsoft.Extensions.Logging" Version="9.0.0" />
-    <PackageVersion Include="Kebechet.Maui.RevenueCat.Android" Version="10.1.2.1" />
-    <PackageVersion Include="Uno.WinRT" Version="6.0.12" />
-    <PackageVersion Include="Kebechet.Maui.RevenueCat.iOS" Version="5.72.0.1" />
+    <PackageVersion Include="Nerdbank.GitVersioning" Version="3.10.94" />
+    <PackageVersion Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="10.0.14" />
+    <PackageVersion Include="Microsoft.Extensions.Logging.Abstractions" Version="10.0.14" />
+    <PackageVersion Include="Microsoft.Extensions.Logging" Version="10.0.14" />
+    <PackageVersion Include="Kebechet.Maui.RevenueCat.Android" Version="10.16.1" />
+    <PackageVersion Include="Kebechet.Types.Result" Version="1.0.0" />
+    <PackageVersion Include="Kebechet.Maui.RevenueCat.iOS" Version="5.83.1" />
   </ItemGroup>
 
   <!-- Test-only -->
