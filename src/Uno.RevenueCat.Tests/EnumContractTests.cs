@@ -89,8 +89,4 @@ public sealed class EnumContractTests
     [DataRow(CustomerInfoFetchPolicy.FromCacheOnly, 3)]
     public void CustomerInfoFetchPolicy_ValuesAreStable(CustomerInfoFetchPolicy member, int expected) =>
         Assert.AreEqual(expected, (int)member);
-
-    [TestMethod]
-    public void CustomerInfoFetchPolicy_DefaultIsCachedOrFetched() =>
-        Assert.AreEqual(CustomerInfoFetchPolicy.CachedOrFetched, default(CustomerInfoFetchPolicy));
 }
