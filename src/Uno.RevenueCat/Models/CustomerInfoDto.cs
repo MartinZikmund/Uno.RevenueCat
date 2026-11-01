@@ -21,7 +21,7 @@ public sealed record CustomerInfoDto
     public required DateTime? LatestExpirationDate { get; init; }
 
     /// <summary>Deep link to the store's subscription management page for this user, when available.</summary>
-    public required string? ManagementURL { get; init; }
+    public required string? ManagementUrl { get; init; }
 
     /// <summary>The entitlements (unlocked access) currently known for this user.</summary>
     public required List<EntitlementInfoDto> Entitlements { get; init; }
