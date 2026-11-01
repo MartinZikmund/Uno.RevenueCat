@@ -13,6 +13,9 @@ This library is based on [Kebechet/Maui.RevenueCat.InAppBilling](https://github.
 
 Android requires API 23 (Android 6.0) or later, which is the floor of the RevenueCat Android SDK 10.x.
 
+The package targets `net10.0-android` and `net10.0-ios` and is built on Uno Platform 7.0 (`Uno.Sdk`).
+It wraps RevenueCat Android SDK 10.16.1 and iOS SDK 5.83.1.
+
 ## Installation
 
 ```
@@ -62,14 +65,23 @@ public sealed partial class MainPage : Page
 
 ## Usage
 
+Every async member returns a result object (`OfferingsResultDto`, `CustomerInfoResultDto`, ...)
+with `IsSuccess`, `Value`, a typed `Error` and the raw `ErrorException`. Check `IsSuccess` before
+reading `Value` - see [Error Handling](#error-handling).
+
 ### Fetching Offerings
 
 Retrieve available product offerings configured in RevenueCat:
 
 ```csharp
-var offerings = await _billing.GetOfferingsAsync();
+var offeringsResult = await _billing.GetOfferingsAsync();
+if (!offeringsResult.IsSuccess)
+{
+    // e.g. offeringsResult.Error == PurchaseErrorStatus.NetworkError while offline
+    return;
+}
 
-var currentOffering = offerings.GetCurrent();
+var currentOffering = offeringsResult.Value!.GetCurrent();
 if (currentOffering != null)
 {
     foreach (var package in currentOffering.AvailablePackages)
@@ -88,7 +100,7 @@ if (currentOffering != null)
 Metadata configured in the RevenueCat dashboard is exposed as typed JSON:
 
 ```csharp
-var offering = (await _billing.GetOfferingsAsync()).GetCurrent();
+var offering = (await _billing.GetOfferingsAsync()).Value?.GetCurrent();
 
 if (offering?.Metadata.TryGetValue("badge", out var badge) == true)
 {
@@ -100,9 +112,9 @@ if (offering?.Metadata.TryGetValue("badge", out var badge) == true)
 
 ```csharp
 // Get a package to purchase
-var offerings = await _billing.GetOfferingsAsync();
+var offerings = (await _billing.GetOfferingsAsync()).Value ?? [];
 var package = offerings
-    .FirstOrDefault(o => o.IsCurrent)?
+    .GetCurrent()?
     .AvailablePackages
     .FirstOrDefault(p => p.Identifier == "monthly");
 
@@ -113,18 +125,20 @@ var result = await _billing.PurchaseProductAsync(package);
 
 if (result.IsSuccess)
 {
-    // Purchase successful
-    var transaction = result.Transaction;
-    Console.WriteLine($"Purchased: {transaction?.ProductIdentifier}");
+    // Purchase successful; result.Value is the refreshed customer info
+    Console.WriteLine($"Purchased: {result.Transaction?.ProductIdentifier}");
 }
-else if (result.ErrorStatus == PurchaseErrorStatus.PurchaseCancelledError)
+else if (result.Error == PurchaseErrorStatus.PurchaseCancelledError)
 {
-    // User cancelled - not an error
+    // User dismissed the store sheet - not a fault
+}
+else if (result.Error == PurchaseErrorStatus.PaymentPendingError)
+{
+    // Accepted but not settled yet (Android PENDING, iOS Ask to Buy) - don't unlock yet
 }
 else
 {
-    // Handle error
-    Console.WriteLine($"Purchase failed: {result.ErrorStatus}");
+    Console.WriteLine($"Purchase failed: {result.Error}");
 }
 ```
 
@@ -132,13 +146,13 @@ else
 
 ```csharp
 // Get active subscriptions
-var activeSubscriptions = await _billing.GetActiveSubscriptionsAsync();
+var activeSubscriptions = (await _billing.GetActiveSubscriptionsAsync()).Value ?? [];
 
 // Get detailed customer info with entitlements
-var customerInfo = await _billing.GetCustomerInfoAsync();
-if (customerInfo != null)
+var customerInfoResult = await _billing.GetCustomerInfoAsync();
+if (customerInfoResult.IsSuccess)
 {
-    foreach (var entitlement in customerInfo.Entitlements)
+    foreach (var entitlement in customerInfoResult.Value!.Entitlements)
     {
         if (entitlement.IsActive)
         {
@@ -149,13 +163,27 @@ if (customerInfo != null)
 }
 ```
 
+Customer info is cached by the SDK and can be stale. Pass a `CustomerInfoFetchPolicy` when the
+entitlements may have changed outside the app, e.g. after a web purchase:
+
+```csharp
+var fresh = await _billing.GetCustomerInfoAsync(CustomerInfoFetchPolicy.FetchCurrent);
+```
+
+| Policy | Behavior |
+|--------|----------|
+| `CachedOrFetched` (default) | Cached data if any (even stale), otherwise fetch |
+| `FetchCurrent` | Always fetch; fails when offline |
+| `NotStaleCachedOrFetched` | Fresh cached data, otherwise fetch; fails rather than return stale data |
+| `FromCacheOnly` | Never fetch; fails with `CustomerInfoError` when nothing is cached |
+
 ### Restoring Purchases
 
 ```csharp
-var customerInfo = await _billing.RestoreTransactionsAsync();
-if (customerInfo != null)
+var restoreResult = await _billing.RestoreTransactionsAsync();
+if (restoreResult.IsSuccess)
 {
-    Console.WriteLine($"Restored {customerInfo.AllPurchasedIdentifiers.Count} purchases");
+    Console.WriteLine($"Restored {restoreResult.Value!.AllPurchasedIdentifiers.Count} purchases");
 }
 ```
 
@@ -163,7 +191,7 @@ if (customerInfo != null)
 
 ```csharp
 // Login with a user ID
-var customerInfo = await _billing.LoginAsync("user_123");
+var loginResult = await _billing.LoginAsync("user_123");
 
 // Check if user is anonymous
 if (_billing.IsAnonymous)
@@ -190,7 +218,8 @@ await _billing.LogoutAsync();
 
 ```csharp
 // Get URL to manage subscriptions (App Store / Play Store)
-var managementUrl = await _billing.GetManagementSubscriptionUrlAsync();
+// A success with a null Value means the user has no store-managed subscription.
+var managementUrl = (await _billing.GetManagementSubscriptionUrlAsync()).Value;
 if (!string.IsNullOrEmpty(managementUrl))
 {
     // Open the URL in browser
@@ -201,10 +230,10 @@ if (!string.IsNullOrEmpty(managementUrl))
 ### Checking Trial Eligibility (iOS only)
 
 ```csharp
-var eligibilities = await _billing.CheckTrialOrIntroDiscountEligibilityAsync(
+var eligibilityResult = await _billing.CheckTrialOrIntroDiscountEligibilityAsync(
     new[] { "product_monthly", "product_yearly" });
 
-foreach (var (productId, status) in eligibilities)
+foreach (var (productId, status) in eligibilityResult.Value ?? new Dictionary<string, IntroElegibilityStatus>())
 {
     if (status == IntroElegibilityStatus.Eligible)
     {
@@ -213,7 +242,7 @@ foreach (var (productId, status) in eligibilities)
 }
 ```
 
-> Note: This method returns an empty dictionary on Android.
+> Note: This method succeeds with an empty dictionary on Android.
 
 ## API Reference
 
@@ -235,8 +264,8 @@ foreach (var (productId, status) in eligibilities)
 | `GetActiveSubscriptionsAsync()` | Get active subscription identifiers |
 | `GetAllPurchasedIdentifiersAsync()` | Get all purchased product identifiers |
 | `GetPurchaseDateForProductIdentifierAsync(id)` | Get the purchase date for a product |
-| `GetCustomerInfoAsync()` | Get customer info with entitlements |
-| `GetStorefrontCountryCodeAsync()` | Get the user's storefront country code |
+| `GetCustomerInfoAsync(fetchPolicy)` | Get customer info with entitlements |
+| `GetStorefrontCountryCodeAsync()` | Get the user's storefront country code (ISO alpha-2) |
 | `LoginAsync(appUserId)` | Login with a user ID |
 | `LogoutAsync()` | Logout current user |
 | `RestoreTransactionsAsync()` | Restore previous purchases |
@@ -267,18 +296,28 @@ the symbol falls back to the ISO code (`USD 9.99`).
 ## Error Handling
 
 The library throws only on developer error — calling any method before `Initialize` raises
-`InvalidOperationException`. Runtime failures never throw: they surface as
-`PurchaseResultDto.ErrorStatus`, an empty collection, or `null`.
+`InvalidOperationException`. Runtime failures never throw. Every async member returns a
+`DataResult<T, PurchaseErrorStatus>` (from [Kebechet.Types.Result](https://www.nuget.org/packages/Kebechet.Types.Result)):
 
-> The native `GetOfferings` call fails when the device is offline. `GetOfferingsAsync` returns an
-> empty list in that case, so check connectivity before showing a paywall.
+| Member | Meaning |
+|--------|---------|
+| `IsSuccess` / `IsError` | Whether the call succeeded |
+| `Value` | The result. Only meaningful when `IsSuccess` is `true` |
+| `Error` | The documented failure mode to branch on |
+| `ErrorException` | The raw store SDK exception, for logs - don't show it to users |
+
+`PurchaseErrorStatus.PurchaseCancelledError` means the `CancellationToken` you passed fired, or, for
+`PurchaseProductAsync`, that the user dismissed the store sheet.
+
+> The native `GetOfferings` call fails when the device is offline, so `GetOfferingsAsync` returns
+> an error result (typically `NetworkError`) rather than an empty list.
 
 ```csharp
 var result = await _billing.PurchaseProductAsync(package);
 
 if (result.IsError)
 {
-    switch (result.ErrorStatus)
+    switch (result.Error)
     {
         case PurchaseErrorStatus.PurchaseCancelledError:
             // User cancelled - handle gracefully
@@ -295,6 +334,41 @@ if (result.IsError)
     }
 }
 ```
+
+## Migrating from 0.2.x to 0.3.0
+
+0.3.0 catches up with upstream `Maui.RevenueCat.InAppBilling` 10.0.0 and moves to .NET 10 and
+Uno Platform 7.0. It contains breaking changes.
+
+| Before | After |
+|--------|-------|
+| `net9.0-android` / `net9.0-ios` | `net10.0-android` / `net10.0-ios`, Uno.Sdk 7.0 |
+| `Task<IReadOnlyList<OfferingDto>> GetOfferingsAsync()` | `Task<OfferingsResultDto>` - read `.Value` |
+| `Task<CustomerInfoDto?>` from `GetCustomerInfoAsync`, `LoginAsync`, `LogoutAsync`, `RestoreTransactionsAsync` | `Task<CustomerInfoResultDto>` |
+| `Task<IReadOnlyList<string>>` from `GetActiveSubscriptionsAsync`, `GetAllPurchasedIdentifiersAsync` | `Task<ProductIdentifiersResultDto>` |
+| `Task<DateTime?> GetPurchaseDateForProductIdentifierAsync(...)` | `Task<PurchaseDateResultDto>` |
+| `Task<string?> GetManagementSubscriptionUrlAsync()` | `Task<ManagementUrlResultDto>` |
+| `Task<bool> CanMakePaymentsAsync()` | `Task<CanMakePaymentsResultDto>` |
+| `Task<string> GetStorefrontCountryCodeAsync()` | `Task<StorefrontResultDto>` |
+| `Task<IReadOnlyDictionary<...>> CheckTrialOrIntroDiscountEligibilityAsync(...)` | `Task<IntroEligibilityResultDto>` |
+| `PurchaseResultDto.ErrorStatus` | `PurchaseResultDto.Error` |
+| `PurchaseResultDto.CustomerInfo` | `PurchaseResultDto.Value` |
+| `PurchaseResultDto` was a `sealed record` | It is a `class`: `==` is reference equality and `with` is gone |
+| `CustomerInfoDto.ManagementURL` | `CustomerInfoDto.ManagementUrl` |
+| `GetCustomerInfoAsync(cancellationToken)` | `GetCustomerInfoAsync(fetchPolicy, cancellationToken)` - pass the token by name |
+
+Behavior changes worth knowing about:
+
+- **Failures are distinguishable from empty results.** An offline `GetOfferingsAsync` used to return
+  an empty list; it now returns an error result.
+- **A pending purchase is an error, not a limbo.** A purchase that did not reach "purchased" used to
+  return a result that was neither `IsSuccess` nor `IsError`. Android `PENDING` and iOS `Deferred`
+  (Ask to Buy) now report `PaymentPendingError`; any other state reports `UnknownError`. Both still
+  carry `Transaction` and `Value`.
+- **The iOS storefront country code is ISO alpha-2** (`"US"`), matching Android. StoreKit's alpha-3
+  (`"USA"`) used to leak through.
+- **Android purchases launch on the UI thread.** Calling `PurchaseProductAsync` off the UI thread used to
+  crash the RevenueCat Test Store with a `Looper.prepare()` error.
 
 ## Migrating from 0.1.x to 0.2.0
 
