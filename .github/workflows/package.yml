@@ -2,10 +2,9 @@ name: 'Build and deploy .NET packages'
 
 on:
   push:
-    branches: [ "main" ]
-    tags: [ "v*" ]
+    branches: [ "main", "release/*" ]
   pull_request:
-    branches: [ "main" ]
+    branches: [ "main", "release/*" ]
 
 jobs:
   build:
@@ -25,8 +24,8 @@ jobs:
       run: dotnet workload restore src/Uno.RevenueCat.slnx
     - name: Restore dependencies
       run: dotnet restore src/Uno.RevenueCat.slnx
-    # Pushes (main and v* tags) are public releases: Nerdbank.GitVersioning drops the -g<commit>
-    # suffix, so main builds e.g. 0.3.0-beta.5 from version.json. PR builds keep the suffix.
+    # Pushes are public releases (see publicReleaseRefSpec in version.json): main builds a
+    # prerelease (0.3.0-beta.5), release/x.y a stable version (0.3.1). PR builds keep a .g<commit> suffix.
     - name: Build
       run: dotnet build --no-restore -c Release src/Uno.RevenueCat.slnx -p:PublicRelease=${{ github.event_name == 'push' }}
     - name: Test
@@ -42,8 +41,8 @@ jobs:
   publish:
     name: 'Publish to NuGet'
     runs-on: windows-latest
-    # Every push to main publishes a prerelease; a stable version ships only once version.json
-    # drops its prerelease label (e.g. 0.3.0-beta.{height} -> 0.3.0). Pull requests never publish.
+    # Pushes to main publish prereleases, pushes to release/x.y publish stable versions.
+    # Cut a release branch with `nbgv prepare-release`. Pull requests never publish.
     if: github.event_name == 'push'
     needs: build
 

@@ -403,6 +403,16 @@ Behavior changes worth knowing about, even though they are not API breaks:
 New in 0.2.0: `CanMakePaymentsAsync()`, `GetStorefrontCountryCodeAsync()`, `PeriodType.Prepaid`, and
 the `StoreType` values `RcBilling`, `External`, `Paddle`, `TestStore`, `Galaxy`.
 
+## Releasing
+
+Versions come from [Nerdbank.GitVersioning](https://github.com/dotnet/Nerdbank.GitVersioning) (`src/version.json`):
+
+- Every push to `main` publishes a prerelease to NuGet (`0.3.0-beta.1`, `0.3.0-beta.2`, ...).
+- To ship a stable version, run `nbgv prepare-release` on `main` and push both branches. It creates
+  `release/0.3`, which publishes stable `0.3.x` versions (`0.3.1` first, then one per fix), and moves
+  `main` on to `0.4.0-beta.N`.
+- Pull request builds never publish.
+
 ## Credits
 
 - [RevenueCat](https://www.revenuecat.com/) - In-app purchase infrastructure
