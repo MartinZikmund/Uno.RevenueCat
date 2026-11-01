@@ -58,10 +58,10 @@ public partial class RevenueCatBilling : IRevenueCatBilling
     public partial string AppUserId { get; }
 
     /// <inheritdoc />
-    public partial Task<bool> CanMakePaymentsAsync(CancellationToken cancellationToken);
+    public partial Task<CanMakePaymentsResultDto> CanMakePaymentsAsync(CancellationToken cancellationToken);
 
     /// <inheritdoc />
-    public partial Task<string> GetStorefrontCountryCodeAsync(CancellationToken cancellationToken);
+    public partial Task<StorefrontResultDto> GetStorefrontCountryCodeAsync(CancellationToken cancellationToken);
 
     /// <inheritdoc />
     public partial void Initialize(string apiKey);
@@ -70,12 +70,12 @@ public partial class RevenueCatBilling : IRevenueCatBilling
     public partial void Initialize(string apiKey, string appUserId);
 
     /// <inheritdoc />
-    public partial Task<IReadOnlyList<OfferingDto>> GetOfferingsAsync(
+    public partial Task<OfferingsResultDto> GetOfferingsAsync(
         bool forceRefresh,
         CancellationToken cancellationToken);
 
     /// <inheritdoc />
-    public partial Task<IReadOnlyDictionary<string, IntroElegibilityStatus>> CheckTrialOrIntroDiscountEligibilityAsync(
+    public partial Task<IntroEligibilityResultDto> CheckTrialOrIntroDiscountEligibilityAsync(
         IEnumerable<string> productIdentifiers,
         CancellationToken cancellationToken);
 
@@ -86,37 +86,37 @@ public partial class RevenueCatBilling : IRevenueCatBilling
         CancellationToken cancellationToken);
 
     /// <inheritdoc />
-    public partial Task<IReadOnlyList<string>> GetActiveSubscriptionsAsync(
+    public partial Task<ProductIdentifiersResultDto> GetActiveSubscriptionsAsync(
         CancellationToken cancellationToken);
 
     /// <inheritdoc />
-    public partial Task<IReadOnlyList<string>> GetAllPurchasedIdentifiersAsync(
+    public partial Task<ProductIdentifiersResultDto> GetAllPurchasedIdentifiersAsync(
         CancellationToken cancellationToken);
 
     /// <inheritdoc />
-    public partial Task<DateTime?> GetPurchaseDateForProductIdentifierAsync(
+    public partial Task<PurchaseDateResultDto> GetPurchaseDateForProductIdentifierAsync(
         string productIdentifier,
         CancellationToken cancellationToken);
 
     /// <inheritdoc />
-    public partial Task<string?> GetManagementSubscriptionUrlAsync(
+    public partial Task<ManagementUrlResultDto> GetManagementSubscriptionUrlAsync(
         CancellationToken cancellationToken);
 
     /// <inheritdoc />
-    public partial Task<CustomerInfoDto?> GetCustomerInfoAsync(
+    public partial Task<CustomerInfoResultDto> GetCustomerInfoAsync(
         CancellationToken cancellationToken);
 
     /// <inheritdoc />
-    public partial Task<CustomerInfoDto?> LoginAsync(
+    public partial Task<CustomerInfoResultDto> LoginAsync(
         string appUserId,
         CancellationToken cancellationToken);
 
     /// <inheritdoc />
-    public partial Task<CustomerInfoDto?> LogoutAsync(
+    public partial Task<CustomerInfoResultDto> LogoutAsync(
         CancellationToken cancellationToken);
 
     /// <inheritdoc />
-    public partial Task<CustomerInfoDto?> RestoreTransactionsAsync(
+    public partial Task<CustomerInfoResultDto> RestoreTransactionsAsync(
         CancellationToken cancellationToken);
 
     /// <inheritdoc />

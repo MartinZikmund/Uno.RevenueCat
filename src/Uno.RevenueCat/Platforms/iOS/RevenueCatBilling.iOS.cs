@@ -1,3 +1,4 @@
+using System.Runtime.CompilerServices;
 using Maui.RevenueCat.iOS;
 using Microsoft.Extensions.Logging;
 using Uno.RevenueCat.Enums;
@@ -27,18 +28,18 @@ public partial class RevenueCatBilling : IRevenueCatBilling
     public partial string AppUserId => Purchases.SharedPurchases.AppUserID;
 
     /// <inheritdoc />
-    public partial Task<bool> CanMakePaymentsAsync(CancellationToken cancellationToken) =>
-        Task.FromResult(Purchases.CanMakePayments);
+    public partial Task<CanMakePaymentsResultDto> CanMakePaymentsAsync(CancellationToken cancellationToken) =>
+        Task.FromResult(new CanMakePaymentsResultDto { Value = Purchases.CanMakePayments });
 
     /// <inheritdoc />
-    public partial Task<string> GetStorefrontCountryCodeAsync(CancellationToken cancellationToken)
+    public partial Task<StorefrontResultDto> GetStorefrontCountryCodeAsync(CancellationToken cancellationToken)
     {
         EnsureInitialized();
 
         // Populated once StoreKit has reported the user's storefront; null until then.
         // StoreKit reports alpha-3 ("USA") while the contract and Android use alpha-2.
         var countryCode = Purchases.SharedPurchases?.StoreFrontCountryCode ?? string.Empty;
-        return Task.FromResult(countryCode.ToIsoAlpha2CountryCode());
+        return Task.FromResult(new StorefrontResultDto { Value = countryCode.ToIsoAlpha2CountryCode() });
     }
 
     /// <inheritdoc />
@@ -72,7 +73,7 @@ public partial class RevenueCatBilling : IRevenueCatBilling
     }
 
     /// <inheritdoc />
-    public async partial Task<IReadOnlyDictionary<string, IntroElegibilityStatus>> CheckTrialOrIntroDiscountEligibilityAsync(
+    public async partial Task<IntroEligibilityResultDto> CheckTrialOrIntroDiscountEligibilityAsync(
         IEnumerable<string> productIdentifiers,
         CancellationToken cancellationToken)
     {
@@ -81,34 +82,27 @@ public partial class RevenueCatBilling : IRevenueCatBilling
         try
         {
             using var eligibilities = await Purchases.SharedPurchases.CheckTrialOrIntroDiscountEligibilityAsync(productIdentifiers, cancellationToken);
-            if (eligibilities is null || eligibilities.Count == 0)
+
+            Dictionary<string, IntroElegibilityStatus> eligibilitiesResult = new();
+
+            if (eligibilities is not null)
             {
-                return new Dictionary<string, IntroElegibilityStatus>();
+                for (ulong i = 0; i < eligibilities.Count; i++)
+                {
+                    eligibilitiesResult.Add(eligibilities.Keys[i], eligibilities.Values[i].Status.Convert());
+                }
             }
 
-            var eligibilitiesResult = new Dictionary<string, IntroElegibilityStatus>();
-
-            for (ulong i = 0; i < eligibilities.Count; i++)
-            {
-                eligibilitiesResult.Add(eligibilities.Keys[i], eligibilities.Values[i].Status.Convert());
-            }
-
-            return eligibilitiesResult;
-        }
-        catch (OperationCanceledException ex)
-        {
-            _logger.LogDebug(ex, "{MethodName} was cancelled.", nameof(CheckTrialOrIntroDiscountEligibilityAsync));
-            return new Dictionary<string, IntroElegibilityStatus>();
+            return new() { Value = eligibilitiesResult };
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "{MethodName} didn't succeed.", nameof(CheckTrialOrIntroDiscountEligibilityAsync));
-            return new Dictionary<string, IntroElegibilityStatus>();
+            return new() { Error = LogAndMapError(ex), ErrorException = ex };
         }
     }
 
     /// <inheritdoc />
-    public async partial Task<IReadOnlyList<OfferingDto>> GetOfferingsAsync(
+    public async partial Task<OfferingsResultDto> GetOfferingsAsync(
         bool forceRefresh,
         CancellationToken cancellationToken)
     {
@@ -116,7 +110,7 @@ public partial class RevenueCatBilling : IRevenueCatBilling
 
         if (!forceRefresh && _cachedOfferingPackages != null)
         {
-            return _cachedOfferingPackages.ToOfferingDtoList();
+            return new() { Value = _cachedOfferingPackages.ToOfferingDtoList() };
         }
 
         try
@@ -126,7 +120,7 @@ public partial class RevenueCatBilling : IRevenueCatBilling
 
             if (offerings is null)
             {
-                return [];
+                return new() { Value = [] };
             }
 
             // Drop the result if the user changed while the fetch was in flight.
@@ -135,17 +129,11 @@ public partial class RevenueCatBilling : IRevenueCatBilling
                 _cachedOfferingPackages = offerings;
             }
 
-            return offerings.ToOfferingDtoList();
-        }
-        catch (OperationCanceledException ex)
-        {
-            _logger.LogDebug(ex, "{MethodName} was cancelled.", nameof(GetOfferingsAsync));
-            return [];
+            return new() { Value = offerings.ToOfferingDtoList() };
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "{MethodName} didn't succeed.", nameof(GetOfferingsAsync));
-            return [];
+            return new() { Error = LogAndMapError(ex), ErrorException = ex };
         }
     }
 
@@ -175,138 +163,96 @@ public partial class RevenueCatBilling : IRevenueCatBilling
             throw new InvalidOperationException($"No package with identifier: {package.Identifier} found. Make sure you called GetOfferingsAsync before.");
         }
 
-        PurchaseSuccessInfo? purchaseSuccessInfo = null;
+        PurchaseSuccessInfo? purchaseSuccessInfo;
 
         try
         {
             purchaseSuccessInfo = await Purchases.SharedPurchases.PurchasePackageAsync(packageToBuy, cancellationToken);
         }
-        catch (PurchasesErrorException ex)
-        {
-            // UserCancelled is checked first: the SDK can signal cancellation with a null NSError,
-            // in which case there is no error code to map and it would surface as UnknownError.
-            var purchaseError = ex?.UserCancelled == true
-                ? PurchaseErrorStatus.PurchaseCancelledError
-                : (ex?.PurchasesErrorCode ?? RCPurchasesErrorCode.UnknownError).ToPurchaseErrorStatus();
-
-            if (purchaseError != PurchaseErrorStatus.PurchaseCancelledError)
-            {
-                _logger.LogError(ex, "PurchasesErrorException");
-            }
-
-            return new PurchaseResultDto
-            {
-                ErrorStatus = purchaseError
-            };
-        }
-        catch (OperationCanceledException ex)
-        {
-            _logger.LogDebug(ex, "{MethodName} was cancelled.", nameof(PurchaseProductAsync));
-            return new PurchaseResultDto
-            {
-                ErrorStatus = PurchaseErrorStatus.PurchaseCancelledError
-            };
-        }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Exception in {MethodName}", nameof(PurchaseProductAsync));
-
-            return new PurchaseResultDto
-            {
-                ErrorStatus = PurchaseErrorStatus.UnknownError
-            };
+            return new() { Error = LogAndMapError(ex), ErrorException = ex };
         }
 
         if (purchaseSuccessInfo is null)
         {
-            _logger.LogError("{VariableName} is null.", nameof(purchaseSuccessInfo));
+            InvalidOperationException missingInfo = new($"{nameof(purchaseSuccessInfo)} is null");
+            return new() { Error = LogAndMapError(missingInfo), ErrorException = missingInfo };
+        }
 
-            return new PurchaseResultDto
+        var sk1Transaction = purchaseSuccessInfo.StoreTransaction.Sk1Transaction;
+        var isPurchased = sk1Transaction is not null
+            ? sk1Transaction.TransactionState == StoreKit.SKPaymentTransactionState.Purchased
+            : !string.IsNullOrEmpty(purchaseSuccessInfo.StoreTransaction.TransactionIdentifier);
+
+        var transaction = purchaseSuccessInfo.StoreTransaction.ToStoreTransactionDto();
+        var customerInfo = purchaseSuccessInfo.CustomerInfo.ToCustomerInfoDto();
+
+        if (!isPurchased)
+        {
+            // Only Deferred means "awaiting approval". Purchasing/Failed/Restored, or a StoreKit 2
+            // transaction without an identifier, are anomalies - "check back later" would be a lie.
+            var errorStatus = sk1Transaction?.TransactionState == StoreKit.SKPaymentTransactionState.Deferred
+                ? PurchaseErrorStatus.PaymentPendingError
+                : PurchaseErrorStatus.UnknownError;
+
+            _logger.LogWarning(
+                "{OperationName} returned a transaction in state {TransactionState}, reported as {ErrorStatus}.",
+                nameof(PurchaseProductAsync),
+                sk1Transaction?.TransactionState.ToString() ?? "StoreKit2 (no identifier)",
+                errorStatus);
+
+            return new()
             {
-                ErrorStatus = PurchaseErrorStatus.UnknownError
+                Error = errorStatus,
+                Transaction = transaction,
+                Value = customerInfo,
             };
         }
 
-        var isSuccess = purchaseSuccessInfo.StoreTransaction.Sk1Transaction is not null
-            ? purchaseSuccessInfo.StoreTransaction.Sk1Transaction.TransactionState == StoreKit.SKPaymentTransactionState.Purchased
-            : !string.IsNullOrEmpty(purchaseSuccessInfo.StoreTransaction.TransactionIdentifier);
-
-        return new PurchaseResultDto
+        return new()
         {
-            IsSuccess = isSuccess,
-            Transaction = purchaseSuccessInfo.StoreTransaction.ToStoreTransactionDto(),
-            CustomerInfo = purchaseSuccessInfo.CustomerInfo.ToCustomerInfoDto()
+            Transaction = transaction,
+            Value = customerInfo,
         };
     }
 
     /// <inheritdoc />
-    public async partial Task<IReadOnlyList<string>> GetActiveSubscriptionsAsync(CancellationToken cancellationToken)
+    public async partial Task<ProductIdentifiersResultDto> GetActiveSubscriptionsAsync(CancellationToken cancellationToken)
     {
         EnsureInitialized();
 
         try
         {
             using var customerInfo = await Purchases.SharedPurchases.GetCustomerInfoAsync(cancellationToken);
-            if (customerInfo is null)
-            {
-                return [];
-            }
 
-            var subscriptions = customerInfo.ActiveSubscriptions.ToStringList();
-            if (subscriptions.Count == 0)
-            {
-                return [];
-            }
-
-            return subscriptions;
-        }
-        catch (OperationCanceledException ex)
-        {
-            _logger.LogDebug(ex, "{MethodName} was cancelled.", nameof(GetActiveSubscriptionsAsync));
-            return [];
+            return new() { Value = customerInfo?.ActiveSubscriptions.ToStringList() ?? [] };
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Couldn't retrieve active subscriptions.");
-            return [];
+            return new() { Error = LogAndMapError(ex), ErrorException = ex };
         }
     }
 
     /// <inheritdoc />
-    public async partial Task<IReadOnlyList<string>> GetAllPurchasedIdentifiersAsync(CancellationToken cancellationToken)
+    public async partial Task<ProductIdentifiersResultDto> GetAllPurchasedIdentifiersAsync(CancellationToken cancellationToken)
     {
         EnsureInitialized();
 
         try
         {
             using var customerInfo = await Purchases.SharedPurchases.GetCustomerInfoAsync(cancellationToken);
-            if (customerInfo is null)
-            {
-                return [];
-            }
 
-            var identifiers = customerInfo.AllPurchasedProductIdentifiers.ToStringList();
-            if (identifiers.Count == 0)
-            {
-                return [];
-            }
-
-            return identifiers;
-        }
-        catch (OperationCanceledException ex)
-        {
-            _logger.LogDebug(ex, "{MethodName} was cancelled.", nameof(GetAllPurchasedIdentifiersAsync));
-            return [];
+            return new() { Value = customerInfo?.AllPurchasedProductIdentifiers.ToStringList() ?? [] };
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Couldn't retrieve all purchased identifiers.");
-            return [];
+            return new() { Error = LogAndMapError(ex), ErrorException = ex };
         }
     }
 
     /// <inheritdoc />
-    public async partial Task<DateTime?> GetPurchaseDateForProductIdentifierAsync(
+    public async partial Task<PurchaseDateResultDto> GetPurchaseDateForProductIdentifierAsync(
         string productIdentifier,
         CancellationToken cancellationToken)
     {
@@ -315,80 +261,53 @@ public partial class RevenueCatBilling : IRevenueCatBilling
         try
         {
             using var customerInfo = await Purchases.SharedPurchases.GetCustomerInfoAsync(cancellationToken);
-            if (customerInfo is null)
-            {
-                return null;
-            }
 
-            return customerInfo.PurchaseDateForProductIdentifier(productIdentifier).ToDateTime();
-        }
-        catch (OperationCanceledException ex)
-        {
-            _logger.LogDebug(ex, "{MethodName} was cancelled.", nameof(GetPurchaseDateForProductIdentifierAsync));
-            return null;
+            return new() { Value = customerInfo?.PurchaseDateForProductIdentifier(productIdentifier).ToDateTime() };
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Couldn't retrieve purchase date.");
-            return null;
+            return new() { Error = LogAndMapError(ex), ErrorException = ex };
         }
     }
 
     /// <inheritdoc />
-    public async partial Task<string?> GetManagementSubscriptionUrlAsync(CancellationToken cancellationToken)
+    public async partial Task<ManagementUrlResultDto> GetManagementSubscriptionUrlAsync(CancellationToken cancellationToken)
     {
         EnsureInitialized();
 
         try
         {
             using var customerInfo = await Purchases.SharedPurchases.GetCustomerInfoAsync(cancellationToken);
-            if (customerInfo is null || customerInfo.ManagementURL is null)
-            {
-                return null;
-            }
 
-            return customerInfo.ManagementURL.ToString();
-        }
-        catch (OperationCanceledException ex)
-        {
-            _logger.LogDebug(ex, "{MethodName} was cancelled.", nameof(GetManagementSubscriptionUrlAsync));
-            return null;
+            return new() { Value = customerInfo?.ManagementURL?.ToString() };
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Couldn't retrieve management url.");
-            return null;
+            return new() { Error = LogAndMapError(ex), ErrorException = ex };
         }
     }
 
     /// <inheritdoc />
-    public async partial Task<CustomerInfoDto?> LoginAsync(string appUserId, CancellationToken cancellationToken)
+    public async partial Task<CustomerInfoResultDto> LoginAsync(string appUserId, CancellationToken cancellationToken)
     {
         EnsureInitialized();
 
         try
         {
             var loginResult = await Purchases.SharedPurchases.LoginAsync(appUserId, cancellationToken);
-            var customerInfo = loginResult.CustomerInfo;
 
             InvalidateIdentityScopedCaches();
 
-            return customerInfo.ToCustomerInfoDto();
-        }
-        catch (OperationCanceledException ex)
-        {
-            _logger.LogDebug(ex, "{MethodName} was cancelled.", nameof(LoginAsync));
-            return null;
+            return new() { Value = loginResult.CustomerInfo.ToCustomerInfoDto() };
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "{MethodName} failed.", nameof(LoginAsync));
-            return null;
+            return new() { Error = LogAndMapError(ex), ErrorException = ex };
         }
     }
 
     /// <inheritdoc />
-    public async partial Task<CustomerInfoDto?> LogoutAsync(CancellationToken cancellationToken)
+    public async partial Task<CustomerInfoResultDto> LogoutAsync(CancellationToken cancellationToken)
     {
         EnsureInitialized();
 
@@ -398,22 +317,16 @@ public partial class RevenueCatBilling : IRevenueCatBilling
 
             InvalidateIdentityScopedCaches();
 
-            return customerInfo.ToCustomerInfoDto();
-        }
-        catch (OperationCanceledException ex)
-        {
-            _logger.LogDebug(ex, "{MethodName} was cancelled.", nameof(LogoutAsync));
-            return null;
+            return new() { Value = customerInfo.ToCustomerInfoDto() };
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "{MethodName} failed.", nameof(LogoutAsync));
-            return null;
+            return new() { Error = LogAndMapError(ex), ErrorException = ex };
         }
     }
 
     /// <inheritdoc />
-    public async partial Task<CustomerInfoDto?> RestoreTransactionsAsync(CancellationToken cancellationToken)
+    public async partial Task<CustomerInfoResultDto> RestoreTransactionsAsync(CancellationToken cancellationToken)
     {
         EnsureInitialized();
 
@@ -421,22 +334,16 @@ public partial class RevenueCatBilling : IRevenueCatBilling
         {
             var customerInfo = await Purchases.SharedPurchases.RestorePurchasesAsync(cancellationToken);
 
-            return customerInfo.ToCustomerInfoDto();
-        }
-        catch (OperationCanceledException ex)
-        {
-            _logger.LogDebug(ex, "{MethodName} was cancelled.", nameof(RestoreTransactionsAsync));
-            return null;
+            return new() { Value = customerInfo.ToCustomerInfoDto() };
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "{MethodName} failed.", nameof(RestoreTransactionsAsync));
-            return null;
+            return new() { Error = LogAndMapError(ex), ErrorException = ex };
         }
     }
 
     /// <inheritdoc />
-    public async partial Task<CustomerInfoDto?> GetCustomerInfoAsync(CancellationToken cancellationToken)
+    public async partial Task<CustomerInfoResultDto> GetCustomerInfoAsync(CancellationToken cancellationToken)
     {
         EnsureInitialized();
 
@@ -444,17 +351,11 @@ public partial class RevenueCatBilling : IRevenueCatBilling
         {
             var customerInfo = await Purchases.SharedPurchases.GetCustomerInfoAsync(cancellationToken);
 
-            return customerInfo.ToCustomerInfoDto();
-        }
-        catch (OperationCanceledException ex)
-        {
-            _logger.LogDebug(ex, "{MethodName} was cancelled.", nameof(GetCustomerInfoAsync));
-            return null;
+            return new() { Value = customerInfo.ToCustomerInfoDto() };
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "{MethodName} failed.", nameof(GetCustomerInfoAsync));
-            return null;
+            return new() { Error = LogAndMapError(ex), ErrorException = ex };
         }
     }
 
@@ -499,5 +400,29 @@ public partial class RevenueCatBilling : IRevenueCatBilling
         }
 
         Purchases.LogLevel = Enums.LogLevel.Debug.ToRCLogLevel();
+    }
+
+    private PurchaseErrorStatus LogAndMapError(Exception exception, [CallerMemberName] string operationName = "")
+    {
+        var errorStatus = exception switch
+        {
+            // StoreKit can signal cancellation with no NSError, leaving PurchasesErrorCode at its
+            // default (UnknownError), so UserCancelled has to win over the code.
+            PurchasesErrorException { UserCancelled: true } => PurchaseErrorStatus.PurchaseCancelledError,
+            PurchasesErrorException purchasesErrorException => purchasesErrorException.PurchasesErrorCode.ToPurchaseErrorStatus(),
+            OperationCanceledException => PurchaseErrorStatus.PurchaseCancelledError,
+            _ => PurchaseErrorStatus.UnknownError,
+        };
+
+        if (errorStatus == PurchaseErrorStatus.PurchaseCancelledError)
+        {
+            _logger.LogDebug(exception, "{OperationName} was cancelled.", operationName);
+        }
+        else
+        {
+            _logger.LogError(exception, "{OperationName} failed.", operationName);
+        }
+
+        return errorStatus;
     }
 }
