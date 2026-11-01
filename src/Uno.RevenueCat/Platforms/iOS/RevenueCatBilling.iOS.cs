@@ -343,13 +343,15 @@ public partial class RevenueCatBilling : IRevenueCatBilling
     }
 
     /// <inheritdoc />
-    public async partial Task<CustomerInfoResultDto> GetCustomerInfoAsync(CancellationToken cancellationToken)
+    public async partial Task<CustomerInfoResultDto> GetCustomerInfoAsync(
+        CustomerInfoFetchPolicy fetchPolicy,
+        CancellationToken cancellationToken)
     {
         EnsureInitialized();
 
         try
         {
-            var customerInfo = await Purchases.SharedPurchases.GetCustomerInfoAsync(cancellationToken);
+            var customerInfo = await Purchases.SharedPurchases.GetCustomerInfoAsync(cancellationToken, fetchPolicy);
 
             return new() { Value = customerInfo.ToCustomerInfoDto() };
         }

@@ -1,6 +1,7 @@
 using Android.App;
 using Android.Content;
 using Com.Revenuecat.Purchases;
+using Uno.RevenueCat.Enums;
 using Package = Com.Revenuecat.Purchases.Package;
 using Uno.RevenueCat.Platforms.Android.Delegates;
 using Uno.RevenueCat.Platforms.Android.Models;
@@ -30,10 +31,11 @@ internal static class PurchasesExtensions
     }
 
     internal static Task<CustomerInfo> GetCustomerInfoAsync(this Purchases purchases,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        CustomerInfoFetchPolicy fetchPolicy = CustomerInfoFetchPolicy.CachedOrFetched)
     {
         var listener = new DelegatingReceiveCustomerInfoCallback(cancellationToken);
-        purchases.GetCustomerInfo(listener);
+        purchases.GetCustomerInfo(fetchPolicy.ToRCCacheFetchPolicy(), listener);
         return listener.Task;
     }
 

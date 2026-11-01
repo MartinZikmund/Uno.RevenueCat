@@ -144,9 +144,18 @@ public interface IRevenueCatBilling
     /// <summary>
     /// Gets the current customer info.
     /// </summary>
+    /// <param name="fetchPolicy">How to treat the SDK's on-device customer info cache.</param>
     /// <param name="cancellationToken">Cancellation token.</param>
     /// <returns>The customer info.</returns>
+    /// <remarks>
+    /// The default <see cref="CustomerInfoFetchPolicy.CachedOrFetched"/> may return stale data. Pass
+    /// <see cref="CustomerInfoFetchPolicy.FetchCurrent"/> when entitlements may have changed outside
+    /// the app, such as after a web purchase. <see cref="PurchaseProductAsync"/>,
+    /// <see cref="RestoreTransactionsAsync"/>, <see cref="LogoutAsync"/> and a <see cref="LoginAsync"/>
+    /// that switches users already return fresh customer info.
+    /// </remarks>
     Task<CustomerInfoResultDto> GetCustomerInfoAsync(
+        CustomerInfoFetchPolicy fetchPolicy = CustomerInfoFetchPolicy.CachedOrFetched,
         CancellationToken cancellationToken = default);
 
     /// <summary>

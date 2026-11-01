@@ -104,6 +104,7 @@ public partial class RevenueCatBilling : IRevenueCatBilling
 
     /// <inheritdoc />
     public partial Task<CustomerInfoResultDto> GetCustomerInfoAsync(
+        CustomerInfoFetchPolicy fetchPolicy,
         CancellationToken cancellationToken);
 
     /// <inheritdoc />
