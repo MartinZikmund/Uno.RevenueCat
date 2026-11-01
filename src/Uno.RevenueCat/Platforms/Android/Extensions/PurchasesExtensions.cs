@@ -66,7 +66,22 @@ internal static class PurchasesExtensions
     {
         var listener = new DelegatingMakePurchaseListener(cancellationToken);
         var purchaseParams = new PurchaseParams(new PurchaseParams.Builder(activity, packageToPurchase));
-        purchases.Purchase(purchaseParams, listener);
+
+        // Play Billing requires launchBillingFlow on the main thread, and the Test Store shows its
+        // dialog synchronously (Looper.prepare() crash off it). A throw inside the posted lambda
+        // would crash the looper and leave the task pending, so route it into the task instead.
+        activity.RunOnUiThread(() =>
+        {
+            try
+            {
+                purchases.Purchase(purchaseParams, listener);
+            }
+            catch (Exception exception)
+            {
+                listener.ReportException(exception);
+            }
+        });
+
         return listener.Task;
     }
 
