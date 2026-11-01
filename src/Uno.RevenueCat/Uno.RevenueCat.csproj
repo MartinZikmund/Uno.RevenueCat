@@ -1,6 +1,6 @@
-<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Uno.Sdk">
 	<PropertyGroup>
-		<TargetFrameworks>net9.0-android;net9.0-ios</TargetFrameworks>
+		<TargetFrameworks>net10.0-android;net10.0-ios</TargetFrameworks>
 		<ImplicitUsings>enable</ImplicitUsings>
 		<Nullable>enable</Nullable>
 		<SupportedOSPlatformVersion Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'ios'">14.2</SupportedOSPlatformVersion>
@@ -31,12 +31,12 @@
 		<PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" />
 		<PackageReference Include="Microsoft.Extensions.Logging.Abstractions" />
 		<PackageReference Include="Microsoft.Extensions.Logging" />
+		<PackageReference Include="Kebechet.Types.Result" />
 	</ItemGroup>
 
 	<!-- Android dependencies -->
 	<ItemGroup Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'android'">
 		<PackageReference Include="Kebechet.Maui.RevenueCat.Android" />
-		<PackageReference Include="Uno.WinRT" />
 	</ItemGroup>
 
 	<!-- iOS dependencies -->

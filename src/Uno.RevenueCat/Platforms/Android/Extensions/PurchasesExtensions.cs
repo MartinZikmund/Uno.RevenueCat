@@ -1,6 +1,7 @@
 using Android.App;
 using Android.Content;
 using Com.Revenuecat.Purchases;
+using Package = Com.Revenuecat.Purchases.Package;
 using Uno.RevenueCat.Platforms.Android.Delegates;
 using Uno.RevenueCat.Platforms.Android.Models;
 

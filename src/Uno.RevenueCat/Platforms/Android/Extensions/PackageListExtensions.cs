@@ -1,4 +1,5 @@
 using Com.Revenuecat.Purchases;
+using Package = Com.Revenuecat.Purchases.Package;
 using Uno.RevenueCat.Extensions;
 using Uno.RevenueCat.Models;
 
