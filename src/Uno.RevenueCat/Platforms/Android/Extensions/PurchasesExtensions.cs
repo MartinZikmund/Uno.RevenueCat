@@ -74,6 +74,12 @@ internal static class PurchasesExtensions
         // would crash the looper and leave the task pending, so route it into the task instead.
         activity.RunOnUiThread(() =>
         {
+            // The callback may have been queued; a cancelled caller must not get a sheet afterwards.
+            if (cancellationToken.IsCancellationRequested)
+            {
+                return;
+            }
+
             try
             {
                 purchases.Purchase(purchaseParams, listener);
